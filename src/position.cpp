@@ -46,6 +46,7 @@ namespace Zobrist {
   Key checks[COLOR_NB][CHECKS_NB];
   Key wall[SQUARE_NB];
   Key endgame[EG_EVAL_NB];
+  Key spell[1][SQUARE_NB];
 }
 
 
@@ -153,6 +154,11 @@ void Position::init() {
 
   PRNG rng(1070372);
 
+  
+ 
+    for (Square s = SQ_A1; s <= SQ_MAX; ++s)
+        Zobrist::spell[0][s] = rng.rand<Key>();
+
   for (Color c : {WHITE, BLACK})
       for (PieceType pt = PAWN; pt <= KING; ++pt)
           for (Square s = SQ_A1; s <= SQ_MAX; ++s)
@@ -259,6 +265,9 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
    6) Fullmove number. The number of the full move. It starts at 1, and is
       incremented after Black's move.
 */
+   // std::cout << "pos set fen " << fenStr << std::endl;
+
+    std::cout << "position set" << std::endl;
 
   unsigned char col, row, token;
   size_t idx;
@@ -267,6 +276,7 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
   std::memset(this, 0, sizeof(Position));
   std::memset(si, 0, sizeof(StateInfo));
   st = si;
+
 
   var = v;
 
@@ -531,11 +541,39 @@ Position& Position::set(const Variant* v, const string& fenStr, bool isChess960,
           st->checksRemaining[BLACK] = CheckCount(std::max(3 - (token - '0'), 0));
       }
   }
+  else
+  {
+      if(ss >> token && token == '@')
+      {
+          std::cout << "Hit @" << std::endl;
+          while (ss >> token)
+          {
+              std::cout << "token: " << token << std::endl;
+
+              if (token == 'F')
+              {
+                  char* s = new char[2];
+                  ss.read(s, 2);
+                  int rank_idx = s[0] - 'a';
+                  int file_idx = s[1] - '1';
+                  Square spell_sq = Square(rank_idx + file_idx * 8);
+                  std::cout << "Got square index " << spell_sq << std::endl;
+
+                  Bitboard freeze = Bitboard(1) << spell_sq;
+                  //freezeSpell[~sideToMove] = freeze;
+                  st->spell_freeze[~sideToMove] = freeze;
+              }
+          }
+      }
+  }
 
   chess960 = isChess960 || v->chess960;
   tsumeMode = Options["TsumeMode"];
   thisThread = th;
   set_state(st);
+  st->has_spell = true;
+  st->mana[WHITE] = 1;
+  st->mana[BLACK] = 0;
 
   assert(pos_is_ok());
 
@@ -1547,6 +1585,15 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   st = &newSt;
   st->move = m;
 
+ 
+  //st->spell_freeze = new Bitboard[2];
+  //st->mana = new char[2];
+  st->spell_freeze[0] = 0;
+  st->spell_freeze[1] = 0;
+  st->mana[WHITE] = st->previous->mana[WHITE];
+  st->mana[BLACK] = st->previous->mana[BLACK];
+  st->has_spell = !st->previous->has_spell;
+
   // Increment ply counters. In particular, rule50 will be reset to zero later on
   // in case of a capture or a pawn move.
   ++gamePly;
@@ -1567,11 +1614,64 @@ void Position::do_move(Move m, StateInfo& newSt, bool givesCheck) {
   Square to = to_sq(m);
   Piece pc = moved_piece(m);
   Piece captured = piece_on(type_of(m) == EN_PASSANT ? capture_square(to) : to);
+  int spell = (m >> 22) & 15;
+  Square spell_origin = Square(m >> 26);
+
+  const Bitboard prevFreezeArea = st->previous->spell_freeze[WHITE] + st->previous->spell_freeze[BLACK];
+
+  if (prevFreezeArea != 0)
+  {
+      const Square origin = Square(st->previous->move >> 26);
+      k ^= Zobrist::spell[0][origin];
+  }
+
+  if (spell == 1)
+  {
+      /*Bitboard origin = 1 >> spell_origin;
+      const bool isRank1 = (Rank1BB & origin) != 0;
+      const bool isRank8 = (Rank8BB & origin) != 0;*/
+
+      Bitboard area = 0;
+      const int x = spell_origin % 8;
+      const int y = spell_origin / 8;
+
+      for (int dx = -1; dx <= 1; dx++)
+      {
+          for (int dy = -1; dy <= 1; dy++)
+          {
+              const int newX = x + dx;
+              const int newY = y + dy;
+
+              if ((newX < 0 || newX > 7) || (newY < 0 || newY > 7))
+                  continue;
+
+              const Square SQ = Square((newX)+(newY * 8));
+              area = area | (1 >> SQ);
+          }
+      }
+
+       
+      st->spell_freeze[us] =  area;
+      st->mana[us] -= 3;
+      k ^= Zobrist::spell[0][spell_origin];
+
+  }
+
+ 
+  
+  //st->mana[them] = std::min(6, (int) (st->mana[them]) + 1);
+
+  st->mana[them] += 1;
+
+ std::cout << "White: " << (int) st->mana[WHITE] << ", Black: " << (int) st->mana[BLACK] << std::endl;
+
+
   if (to == from)
   {
       assert((type_of(m) == PROMOTION && sittuyin_promotion()) || (is_pass(m) && (pass(us) || var->wallOrMove )));
       captured = NO_PIECE;
   }
+  st->capturedpromoted = is_promoted(to);
   st->capturedpromoted = is_promoted(to);
   st->unpromotedCapturedPiece = captured ? unpromoted_piece_on(to) : NO_PIECE;
   st->pass = is_pass(m);
@@ -2137,6 +2237,9 @@ void Position::undo_move(Move m) {
   Square to = to_sq(m);
   Piece pc = piece_on(to);
 
+
+
+
   assert(type_of(m) == DROP || empty(from) || type_of(m) == CASTLING || is_gating(m)
          || (type_of(m) == PROMOTION && sittuyin_promotion())
          || (is_pass(m) && (pass(us) || var->wallOrMove)));
@@ -2306,6 +2409,11 @@ void Position::do_null_move(StateInfo& newSt) {
 
   newSt.previous = st;
   st = &newSt;
+
+  st->spell_freeze[0] = 0;
+  st->spell_freeze[1] = 0;
+  st->mana[WHITE] = st->previous->mana[WHITE];
+  st->mana[BLACK] = st->previous->mana[BLACK];
 
   st->dirtyPiece.dirty_num = 0;
   st->dirtyPiece.piece[0] = NO_PIECE; // Avoid checks in UpdateAccumulator()
@@ -3289,6 +3397,11 @@ bool Position::pos_is_ok() const {
       }
 
   return true;
+}
+
+Bitboard Position::get_freeze_spell(Color c) const
+{
+    return freezeSpell[c];
 }
 
 } // namespace Stockfish

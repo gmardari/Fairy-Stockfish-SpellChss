@@ -239,7 +239,7 @@ constexpr int MAX_PLY = 60;
 #endif
 /// endif USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
 #else
-constexpr int MAX_MOVES = 1024;
+constexpr int MAX_MOVES = 32768; //was 1024
 constexpr int MAX_PLY = 246;
 #endif
 /// endif ALLVARS
@@ -250,6 +250,8 @@ constexpr int MAX_PLY = 246;
 /// bit  6-11: origin square (from 0 to 63)
 /// bit 12-13: promotion piece type - 2 (from KNIGHT-2 to QUEEN-2)
 /// bit 14-15: special move flag: promotion (1), en passant (2), castling (3)
+/// bit 22-25: type of spell used (mardarcu) (16 spells max) (4 bit)
+/// bit 26 - 30: spell origin square (6 bit)
 /// NOTE: en passant bit is set only when a pawn can be captured
 ///
 /// Special cases are MOVE_NONE and MOVE_NULL. We can sneak these in because in
@@ -827,9 +829,15 @@ constexpr Move make_move(Square from, Square to) {
 }
 
 template<MoveType T>
+inline Move make_spell(Square from, Square to, PieceType pt = NO_PIECE_TYPE, int spell = 0, Square spell_from = 0) {
+    return Move(((pt << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + T + (from << SQUARE_BITS) + to) | (spell << 22) | (spell_from << 26));
+}
+
+template<MoveType T>
 inline Move make(Square from, Square to, PieceType pt = NO_PIECE_TYPE) {
   return Move((pt << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + T + (from << SQUARE_BITS) + to);
 }
+
 
 constexpr Move make_drop(Square to, PieceType pt_in_hand, PieceType pt_dropped) {
   return Move((pt_in_hand << (2 * SQUARE_BITS + MOVE_TYPE_BITS + PIECE_TYPE_BITS)) + (pt_dropped << (2 * SQUARE_BITS + MOVE_TYPE_BITS)) + DROP + to);

@@ -87,6 +87,12 @@ struct StateInfo {
   // Used by NNUE
   Eval::NNUE::Accumulator accumulator;
   DirtyPiece dirtyPiece;
+
+  int gicu_troll;
+  Bitboard spell_freeze[COLOR_NB];
+  int mana[COLOR_NB];
+  bool has_spell;
+  
 };
 
 
@@ -340,6 +346,8 @@ public:
   void put_piece(Piece pc, Square s, bool isPromoted = false, Piece unpromotedPc = NO_PIECE);
   void remove_piece(Square s);
 
+  Bitboard get_freeze_spell(Color c) const;
+
 private:
   // Initialization helpers (used while setting up a position)
   void set_castling_right(Color c, Square rfrom);
@@ -365,6 +373,7 @@ private:
   int gamePly;
   Color sideToMove;
   Score psq;
+  Bitboard freezeSpell[COLOR_NB];
 
   // variant-specific
   const Variant* var;

@@ -28,6 +28,14 @@ namespace {
   template<MoveType T>
   ExtMove* make_move_and_gating(const Position& pos, ExtMove* moveList, Color us, Square from, Square to, PieceType pt = NO_PIECE_TYPE) {
 
+      const Bitboard freeze_spell = pos.state()->spell_freeze[~us];
+       
+          if (((1 << from) & freeze_spell) != 0)
+          {
+              //std::cout << "freeze square " << from << std::endl;
+              return moveList;
+          }
+
     // Wall placing moves
     //if it's "wall or move", and they chose non-null move, skip even generating wall move
     if (pos.walling() && !(pos.variant()->wallOrMove && (from!=to)))
@@ -64,7 +72,17 @@ namespace {
         return moveList;
     }
 
+    const Square FREEZE_SPELL_SQ = us == WHITE ? SQ_E7 : SQ_E2;
+
+
+
     *moveList++ = make<T>(from, to, pt);
+
+    if (pos.state()->mana[us] >= 3)
+    {
+        *moveList++ = make_spell<T>(from, to, pt, 1, FREEZE_SPELL_SQ);
+    }
+   
 
     // Gating moves
     if (pos.seirawan_gating() && (pos.gates(us) & from))
@@ -148,8 +166,15 @@ namespace {
     const Bitboard tripleStepRegion = pos.triple_step_region(Us);
 
     const Bitboard pawns      = pos.pieces(Us, PAWN);
-    const Bitboard movable    = pos.board_bb(Us, PAWN) & ~pos.pieces();
-    const Bitboard capturable = pos.board_bb(Us, PAWN) &  pos.pieces(Them);
+    //const Bitboard moveMask = pos.state()->spell_freeze[Them];
+    //const Bitboard pawns = pos.pieces(Us, PAWN) & ~moveMask;
+    const Bitboard movable    =  pos.board_bb(Us, PAWN) & ~pos.pieces();
+    const Bitboard capturable =  pos.board_bb(Us, PAWN) & pos.pieces(Them);
+
+    //std::cout << moveMask << std::endl;
+
+   // const Square FREEZE_SPELL_SQ = Us == WHITE ? SQ_E7 : SQ_E2;
+
 
     target = Type == EVASIONS ? target : AllSquares;
 
@@ -165,6 +190,8 @@ namespace {
     Bitboard b3p = b3 & standardPromotionZone;
     Bitboard brcp = brc & standardPromotionZone;
     Bitboard blcp = blc & standardPromotionZone;
+
+    //int spell_count = 0;
 
     // Restrict regions based on rules and move generation type
     if (pos.mandatory_pawn_promotion())
@@ -194,12 +221,16 @@ namespace {
         {
             Square to = pop_lsb(b1);
             moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, to - Up, to);
+            //*moveList++ = make_spell<NORMAL>(to - Up, to, NO_PIECE_TYPE, 1, FREEZE_SPELL_SQ);
+           // spell_count += 1;
         }
 
         while (b2)
         {
             Square to = pop_lsb(b2);
             moveList = make_move_and_gating<NORMAL>(pos, moveList, Us, to - Up - Up, to);
+           // *moveList++ = make_spell<NORMAL>(to - Up - Up, to, NO_PIECE_TYPE, 1, FREEZE_SPELL_SQ);
+           // spell_count += 1;
         }
 
         while (b3)
@@ -281,6 +312,8 @@ namespace {
                 moveList = make_move_and_gating<EN_PASSANT>(pos, moveList, Us, pop_lsb(b), epSquare);
         }
     }
+
+   // std::cout << "Spell moves: " << spell_count << std::endl;
 
     return moveList;
   }
@@ -469,6 +502,7 @@ namespace {
                 if (!pos.castling_impeded(cr) && pos.can_castle(cr))
                     moveList = make_move_and_gating<CASTLING>(pos, moveList, Us,ksq, pos.castling_rook_square(cr));
     }
+
 
     return moveList;
   }

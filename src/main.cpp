@@ -38,6 +38,7 @@ using namespace Stockfish;
 int main(int argc, char* argv[]) {
 
   std::cout << engine_info() << std::endl;
+  std::cout << sizeof(int) << std::endl;
 
   pieceMap.init();
   variants.init();

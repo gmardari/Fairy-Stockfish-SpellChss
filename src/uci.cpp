@@ -555,6 +555,12 @@ string UCI::move(const Position& pos, Move m) {
   if (pos.walling() && CurrentProtocol != XBOARD)
       move += "," + UCI::square(pos, to) + UCI::square(pos, gating_square(m));
 
+  if (m & (31 << 22))
+  {
+      move += "@F";
+  }
+
+
   return move;
 }
 
